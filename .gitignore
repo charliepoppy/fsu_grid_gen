@@ -1,6 +1,6 @@
 grids/
 figs/
-geometry/
 *.h5
 __pycache__/
-*.pyc*:Zone.Identifier
+*.pyc
+*:Zone.Identifier
