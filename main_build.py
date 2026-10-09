@@ -16,7 +16,9 @@ import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import numpy as np
 from scipy.optimize import brentq, minimize_scalar
-from gasdynamics import pm_nu, pm_M, oblique_shock
+from geometry.gasdynamics import pm_nu, pm_M, oblique_shock
+from geometry.geometry import  solve_geometry
+from geometry.lines import intersect, ang
 try:
     from utils.plots import set_style
     set_style()

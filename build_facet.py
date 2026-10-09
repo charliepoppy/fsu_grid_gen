@@ -40,6 +40,9 @@ from utils.plots import (
     spanwise_stretch_plot,
 )
 
+from plots import plot_geometry
+
+
 from utils.plots import set_style
 set_style()
 
