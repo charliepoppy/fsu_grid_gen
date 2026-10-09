@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import numpy as np
 from scipy.optimize import brentq, minimize_scalar
-
+from gasdynamics import pm_nu, pm_M, oblique_shock
 try:
     from utils.plots import set_style
     set_style()
@@ -32,8 +32,8 @@ CFG = {
     "Minf": 3.0,
     "theta0": 6.67,                    # ramp 1 [deg]              (CAD)
     "theta1": 20.8,                    # ramp 2 [deg]              (CAD)
-    "cowl_angle": 9.0,                 # cowl  [deg]               (spec)
-    "facet_angle": 9.0,                # facet [deg]               (spec)
+    "cowl_angle": 9.0,                 # cowl   [deg]               (spec)
+    "facet_angle": 9.0,                # facet  [deg]               (spec)
     "leading_edge": (0.0, 0.0992),     # ramp tangent point on r = 0.1 LE radius (CAD frame)
     "cowl_lip": (140.4, 50.0),         # specified
     "focus": (140.696, 49.696),        # MoC wave focus, least-squares fit to CAD (0.43 from lip)
@@ -57,109 +57,6 @@ REF = {
 }
 
 TOL = {"angle": 0.01, "point": 0.10, "cad": 0.05, "H": 0.05, "focus": 1e-6}
-
-
-# ======================================================================
-# Gas dynamics
-# ======================================================================
-def pm_nu(M, g=1.4):
-    """Prandtl-Meyer function nu(M), radians."""
-    return (np.sqrt((g + 1) / (g - 1)) * np.arctan(np.sqrt((g - 1) / (g + 1) * (M**2 - 1)))
-            - np.arctan(np.sqrt(M**2 - 1)))
-
-
-def pm_M(nu, g=1.4):
-    """Inverse Prandtl-Meyer: M from nu."""
-    return brentq(lambda M: pm_nu(M, g) - nu, 1 + 1e-12, 50)
-
-
-def theta_from_beta(M, beta, g=1.4):
-    return np.arctan(2 / np.tan(beta) * (M**2 * np.sin(beta)**2 - 1)
-                     / (M**2 * (g + np.cos(2 * beta)) + 2))
-
-
-def beta_from_theta(M, theta, g=1.4, strong=False):
-    """Shock angle for deflection theta (radians). Weak branch by default."""
-    mu = np.arcsin(1 / M)
-    res = minimize_scalar(lambda b: -theta_from_beta(M, b, g),
-                          bounds=(mu, np.pi / 2), method="bounded")
-    beta_max, theta_max = res.x, -res.fun
-    if theta > theta_max:
-        raise ValueError(f"detached: theta {np.degrees(theta):.2f} > theta_max {np.degrees(theta_max):.2f} deg")
-    f = lambda b: theta_from_beta(M, b, g) - theta
-    lo, hi = (beta_max, np.pi / 2) if strong else (mu + 1e-12, beta_max)
-    return brentq(f, lo, hi)
-
-
-def oblique_shock(M1, theta, g=1.4):
-    """Post-shock state across a weak oblique shock. theta in radians."""
-    beta = beta_from_theta(M1, theta, g)
-    Mn1 = M1 * np.sin(beta)
-    p = 1 + 2 * g / (g + 1) * (Mn1**2 - 1)
-    r = (g + 1) * Mn1**2 / ((g - 1) * Mn1**2 + 2)
-    Mn2 = np.sqrt((1 + 0.5 * (g - 1) * Mn1**2) / (g * Mn1**2 - 0.5 * (g - 1)))
-    return {"beta": beta, "M2": Mn2 / np.sin(beta - theta), "p2_p1": p, "rho2_rho1": r, "T2_T1": p / r}
-
-
-# ======================================================================
-# Geometry
-# ======================================================================
-def intersect(p, a, q, b):
-    """Point where line (p, angle a) meets line (q, angle b). Angles in radians."""
-    A = np.array([[np.cos(a), -np.cos(b)], [np.sin(a), -np.sin(b)]])
-    s = np.linalg.solve(A, np.subtract(q, p))[0]
-    return np.asarray(p, float) + s * np.array([np.cos(a), np.sin(a)])
-
-
-def ang(p, q):
-    """Angle of segment p->q in degrees."""
-    return np.degrees(np.arctan2(q[1] - p[1], q[0] - p[0]))
-
-
-def focused_isentropic_wall(Minf, th0_deg, th1_deg, F, LE, n=4000):
-    """Wall turning th0 -> th1 whose left-running Mach waves all pass through F."""
-    th0, th1 = np.radians(th0_deg), np.radians(th1_deg)
-    M2 = oblique_shock(Minf, th0)["M2"]
-    nu2 = pm_nu(M2)
-    th = np.linspace(th0, th1, n)
-    M = np.array([pm_M(nu2 - (t - th0)) for t in th])     # compression: nu falls
-    phi = th + np.arcsin(1 / M)                              # wave angle = theta + mu
-    W = [intersect(LE, th0, F, phi[0])]
-    for i in range(1, n):
-        W.append(intersect(W[-1], 0.5 * (th[i - 1] + th[i]), F, phi[i]))
-    return np.array(W), phi, M
-
-
-def solve_geometry(cfg):
-    """Everything derived from CFG. Returns dict G."""
-    LE, lip, F = map(np.asarray, (cfg["leading_edge"], cfg["cowl_lip"], cfg["focus"]))
-    th1 = np.radians(cfg["theta1"])
-    tc, tf = np.tan(np.radians(cfg["cowl_angle"])), np.tan(np.radians(cfg["facet_angle"]))
-
-    LE_shock = oblique_shock(cfg["Minf"], np.radians(cfg["theta0"]))
-    W, phi, M = focused_isentropic_wall(cfg["Minf"], cfg["theta0"], cfg["theta1"], F, LE)
-
-    xs = cfg["shoulder_x"]
-    shoulder = np.array([xs, W[-1, 1] + np.tan(th1) * (xs - W[-1, 0])])
-    ceiling, floor = cfg["ceiling"], cfg["floor"]
-    cowl_end = np.array([lip[0] + (ceiling - lip[1]) / tc, ceiling])
-    facet_end = np.array([shoulder[0] + (floor - shoulder[1]) / tf, floor])
-    x_out = facet_end[0] + cfg["iso_length"]
-
-    cowl_shock = oblique_shock(M[-1], th1 - np.radians(cfg["cowl_angle"]))
-    cs_ang = cfg["theta1"] - np.degrees(cowl_shock["beta"])
-    impinge = intersect(lip, np.radians(cs_ang), shoulder, np.radians(cfg["facet_angle"]))
-
-    lower = np.vstack([LE, W, shoulder, facet_end, [x_out, floor]])
-    upper = np.vstack([lip, cowl_end, [x_out, ceiling]])
-
-    pts = {"leading edge": LE, "turn start": W[0], "turn end": W[-1], "shoulder": shoulder,
-           "facet end": facet_end, "cowl lip": lip, "cowl end": cowl_end,
-           "outlet floor": np.array([x_out, floor]), "outlet ceiling": np.array([x_out, ceiling]),
-           "cowl shock impingement": impinge}
-
-    return dict(W=W, phi=phi, M=M, F=F, LE_shock=LE_shock, cowl_shock=cowl_shock, cs_ang=cs_ang,
-                ceiling=ceiling, floor=floor, x_out=x_out, lower=lower, upper=upper, pts=pts)
 
 
 # ======================================================================
