@@ -50,7 +50,8 @@ REF = {
     "H_t": 17.34,                                   # FSU isolator height
     "cad_curve_end": (156.1754, 34.8450),          # CAD, full precision
     "digitised": {                                  # hand-digitised / sketch-measured
-        "curve end": (155.7, 34.845),
+        # "curve end": (155.7, 34.845),
+        "curve end": (156.175,  34.831),
         "cowl end": (181.06, 56.44),
         "facet end": (183.19, 39.05),
     },

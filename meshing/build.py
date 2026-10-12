@@ -14,6 +14,33 @@ def build_x(stations, dx_target):
     return x, idx, np.diff(xs) / n
 
 
+def wall_core(n, L, d0, rmax=1.05):
+    """
+    n points on [0, L]: geometric layer from each wall (first cell d0, growth r <= rmax)
+    then a uniform core whose spacing equals the last layer cell (spacing is continuous).
+    Chooses the layer depth that minimises the core spacing. Returns z, (r, m, d_core).
+    """
+    from scipy.optimize import brentq
+    cells, best = n - 1, None
+    for m_ in range(1, cells // 2):
+        nc = cells - 2 * m_
+        f = lambda r: d0 * r**m_ - (L - 2.0 * d0 * (r**m_ - 1.0) / (r - 1.0)) / nc
+        try:
+            r = brentq(f, 1.0 + 1e-9, 2.0)
+        except ValueError:
+            continue
+        if r <= rmax and (best is None or d0 * r**m_ < best[2]):
+            best = (r, m_, d0 * r**m_)
+    if best is None:
+        raise ValueError(f"no wall+core distribution with n={n}, L={L}, d0={d0}, growth<={rmax}")
+    r, m_, dc = best
+    layer = d0 * r ** np.arange(m_)
+    d = np.r_[layer, np.full(cells - 2 * m_, dc), layer[::-1]]
+    z = np.r_[0.0, np.cumsum(d)]
+    return z * (L / z[-1]), best
+
+
+
 def dy_mid(x, x_lip, m):
     """
     Spacing along the mid line (cowl downstream of lip, B0/B3 interface upstream).
@@ -80,6 +107,28 @@ def build_y(x, y_lower, y_mid, y_top, x_lip, m):
     Y_up = build_columns(y_mid, y_top, m["ny_upper"], dup, np.full_like(x, m["dy_top"]))
     return Y_low, Y_up, dmid
 
+# ======================================================================
+# Spanwise extrusion + write
+# ======================================================================
+def _smoothstep(s):
+    s = np.clip(s, 0.0, 1.0)
+    return s * s * (3.0 - 2.0 * s)
+
+
+
+def sidewall_weight(x, x_lip, upper, m):
+    """
+    0 -> uniform span, 1 -> sidewall-clustered span.
+      x <  lip : ramps 0 -> 1 over dz_blend_up approaching the lip (all blocks; B3 must equal B0)
+      x >= lip : lower blocks (B1, between the sidewalls) stay 1;
+                 upper blocks (B2, external, no sidewalls) relax 1 -> 0 over dz_blend_down
+    """
+    w = 1.0 - _smoothstep((x_lip - x) / m["dz_blend_up"])
+    if upper:
+        w = np.where(x >= x_lip, 1.0 - _smoothstep((x - x_lip) / m["dz_blend_down"]), w)
+    return np.where(x >= x_lip, w if upper else 1.0, w)
+
+
 def build_z(xb, ib, x_lip, m):
     """(nz, nx_block) spanwise coordinates for block ib with x-coordinates xb."""
     nz, Lz = m["nz"], m["Lz"]
@@ -90,6 +139,6 @@ def build_z(xb, ib, x_lip, m):
         raise ValueError(f"unknown span type {m['span']!r}")
     # sidewall: nodes on both z = 0 and z = Lz (walls in B1), same nz in every block
     z_uni = np.linspace(0.0, Lz, nz)
-    z_wall, _ = wall_core(nz, Lz, m["dz_wall"])
+    z_wall, _ = wall_core(nz, Lz, m["dz_wall"], rmax=m["dz_growth"])
     w = sidewall_weight(xb, x_lip, upper=ib in (2, 3), m=m)
     return z_uni[:, None] * (1.0 - w[None, :]) + z_wall[:, None] * w[None, :]

@@ -4,3 +4,5 @@ figs/
 __pycache__/
 *.pyc
 *:Zone.Identifier
+geometry/geometry.json
+geometry/walls.npz

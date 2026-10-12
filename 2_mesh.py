@@ -21,7 +21,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from meshing.plots import plot_x, plot_z, plot_readback, plot_geometry, plot_grid_zooms
-from meshing.build import build_x, build_y, build_z
+from meshing.build import build_x, build_y, build_z, wall_core
+# import meshing.ops_writer as ops_writer
+from meshing.ops_writer import write_extruded_blocks
+
 from utils.style import set_style
 set_style()
 
@@ -31,7 +34,7 @@ HERE = Path(__file__).resolve().parent
 # Mesh inputs (geometry inputs live in MoC.py)
 # ======================================================================
 MESH = {
-    "casename": "FSU_facet_periodic_LES",
+    "casename": "FSU_facet_sidewalls_LES",
     "geometry_dir": "geometry",
     "dx_target": 0.1026,                 # CAD units (production LES value)
     # corners that must be x nodes, in order; names match geometry.json "points"
@@ -51,9 +54,10 @@ MESH = {
     # ---- spanwise ----
     "Lz": 25.0,                          # span, CAD units
     "nz": 50,
-    "span": "periodic",                  # "periodic": uniform, endpoint excluded, centred on 0
+    "span": "sidewall",                  # "periodic": uniform, endpoint excluded, centred on 0
                                          # "sidewall": walls at z = 0 and Lz from the lip; uniform upstream
     "dz_wall": 0.006,                    # sidewall first cell (sidewall mode)
+    "dz_growth": 1.05,                   # max spanwise growth ratio in the sidewall layer
     "dz_blend_up": 20.0,                 # uniform -> clustered over this length upstream of the lip
     "dz_blend_down": 5.0,                # B2 (external) relaxes back to uniform over this length
 
@@ -125,53 +129,6 @@ def assemble_blocks_2d(x, Y_low, Y_up, i_lip):
     }
 
 
-# ======================================================================
-# Spanwise extrusion + write
-# ======================================================================
-def _smoothstep(s):
-    s = np.clip(s, 0.0, 1.0)
-    return s * s * (3.0 - 2.0 * s)
-
-
-def sidewall_weight(x, x_lip, upper, m):
-    """
-    0 -> uniform span, 1 -> sidewall-clustered span.
-      x <  lip : ramps 0 -> 1 over dz_blend_up approaching the lip (all blocks; B3 must equal B0)
-      x >= lip : lower blocks (B1, between the sidewalls) stay 1;
-                 upper blocks (B2, external, no sidewalls) relax 1 -> 0 over dz_blend_down
-    """
-    w = 1.0 - _smoothstep((x_lip - x) / m["dz_blend_up"])
-    if upper:
-        w = np.where(x >= x_lip, 1.0 - _smoothstep((x - x_lip) / m["dz_blend_down"]), w)
-    return np.where(x >= x_lip, w if upper else 1.0, w)
-
-
-def wall_core(n, L, d0, rmax=1.05):
-    """
-    n points on [0, L]: geometric layer from each wall (first cell d0, growth r <= rmax)
-    then a uniform core whose spacing equals the last layer cell (spacing is continuous).
-    Chooses the layer depth that minimises the core spacing. Returns z, (r, m, d_core).
-    """
-    from scipy.optimize import brentq
-    cells, best = n - 1, None
-    for m_ in range(1, cells // 2):
-        nc = cells - 2 * m_
-        f = lambda r: d0 * r**m_ - (L - 2.0 * d0 * (r**m_ - 1.0) / (r - 1.0)) / nc
-        try:
-            r = brentq(f, 1.0 + 1e-9, 2.0)
-        except ValueError:
-            continue
-        if r <= rmax and (best is None or d0 * r**m_ < best[2]):
-            best = (r, m_, d0 * r**m_)
-    if best is None:
-        raise ValueError(f"no wall+core distribution with n={n}, L={L}, d0={d0}, growth<={rmax}")
-    r, m_, dc = best
-    layer = d0 * r ** np.arange(m_)
-    d = np.r_[layer, np.full(cells - 2 * m_, dc), layer[::-1]]
-    z = np.r_[0.0, np.cumsum(d)]
-    return z * (L / z[-1]), best
-
-
 
 
 def check_z(blocks2d, x_lip, m):
@@ -181,7 +138,7 @@ def check_z(blocks2d, x_lip, m):
     d1 = np.diff(Z[1][:, 0]); g = d1[1:] / d1[:-1]
     d0 = np.diff(Z[0][:, 0])
     print("\nspanwise (sidewall mode):")
-    _, (r, ml, dc) = wall_core(m["nz"], m["Lz"], m["dz_wall"])
+    _, (r, ml, dc) = wall_core(m["nz"], m["Lz"], m["dz_wall"], rmax=m["dz_growth"])
     print(f"  B1 (internal): wall dz {d1[0]:.5f}, growth {r:.4f} over {ml} cells/side, core dz {d1.max():.4f}"
           f"  ({d1.max() / (m['Lz'] / m['nz']):.2f}x the periodic dz {m['Lz'] / m['nz']:.4f})")
     print(f"  B0 inflow column: uniform dz {d0.max():.4f}")
@@ -194,7 +151,6 @@ def check_z(blocks2d, x_lip, m):
 
 
 def write_grid(blocks2d, m, geo, out_dir, x_lip):
-    from ops_writer import write_extruded_blocks
     blocks = {ib: (X, Y, build_z(X[0], ib, x_lip, m)) for ib, (X, Y) in blocks2d.items()}
     path = Path(out_dir) / f"{m['casename'].lower()}.h5"
     prov = {"mesh": {k: v for k, v in m.items()}, "geometry_sha": geo["meta"]["walls_sha"],
@@ -294,6 +250,8 @@ def main():
     ap.add_argument("--nz", type=int)
     ap.add_argument("--span", choices=["periodic", "sidewall"])
     ap.add_argument("--write", action="store_true", help="write the OPS HDF5 grid")
+    ap.add_argument("--dz-wall", dest="dz_wall", type=float)
+    ap.add_argument("--dz-growth", dest="dz_growth", type=float)
     args = ap.parse_args()
 
     out_dir = HERE / "grids" / MESH["casename"].lower()
@@ -331,10 +289,13 @@ def main():
     plot_grid_zooms(blocks, x, dmid, i_lip, geo, fig_dir, m)
 
     # ---- stage 3: extrude + write ----
-    if args.nz is not None:
-        m["nz"] = args.nz
-    if args.span is not None:
-        m["span"] = args.span
+    # if args.nz is not None:
+    #     m["nz"] = args.nz
+    # if args.span is not None:
+    #     m["span"] = args.span
+    for k in ("nz", "span", "dz_wall", "dz_growth"):
+        if getattr(args, k) is not None:
+            m[k] = getattr(args, k)
     check_z(blocks, x[i_lip], m)
     plot_z(blocks, x[i_lip], m, fig_dir)
     n3 = sum(v[0].size for v in blocks.values()) * m["nz"]

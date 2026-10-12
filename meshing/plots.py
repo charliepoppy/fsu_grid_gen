@@ -1,6 +1,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from meshing.build import build_x, build_y, build_z
+from meshing.ops_writer import read_plane
+from pathlib import Path
 
 def plot_geometry(casename, pts, curve_x, curve_y, fig_dir):
     fig, ax = plt.subplots(figsize=(10, 4))
@@ -63,7 +65,6 @@ def plot_z(blocks2d, x_lip, m, fig_dir, stride_x=20, stride_z=4):
 
 def plot_readback(path, blocks2d, m, fig_dir):
     """Read k=0 back from the file and overlay on the in-memory grid (scaled)."""
-    from ops_writer import read_plane
     fig, ax = plt.subplots(figsize=(10, 3.5))
     worst = 0.0
     for ib, (X, Y) in blocks2d.items():
