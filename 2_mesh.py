@@ -271,6 +271,7 @@ def main():
     ap.add_argument("--dz-growth", dest="dz_growth", type=float)
     ap.add_argument("--write", action="store_true", help="write the OPS HDF5 grid")
     ap.add_argument("--allow-unvalidated", action="store_true")
+    ap.add_argument("--group", default="", help="subfolder under grids/, e.g. production or tests")
     args = ap.parse_args()
 
     # one settings dict: MESH defaults, overridden by whatever was given on the command line
@@ -283,7 +284,7 @@ def main():
     m["variant"] = variant
     m["casename"] = MESH["casename"].format(variant=variant, span=m["span"])
 
-    out_dir = HERE / "grids" / m["casename"].lower()
+    out_dir = HERE / "grids" / args.group / m["casename"].lower()
     fig_dir = out_dir / "figs"
     fig_dir.mkdir(parents=True, exist_ok=True)
     print(f"case: {m['casename']}  ->  {out_dir}")
