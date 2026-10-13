@@ -24,7 +24,7 @@ from meshing.plots import plot_x, plot_z, plot_readback, plot_geometry, plot_gri
 from meshing.build import build_x, build_y, build_z, wall_core
 # import meshing.ops_writer as ops_writer
 from meshing.ops_writer import write_extruded_blocks
-
+from meshing.topology import faceted
 from utils.style import set_style
 set_style()
 
@@ -114,19 +114,6 @@ def walls_on_x(x, geo, y_top):
     y_top_arr = np.full_like(x, y_top)
     return y_lower, y_mid, y_top_arr
 
-
-
-def assemble_blocks_2d(x, Y_low, Y_up, i_lip):
-    """4-block faceted topology. Each block: (X, Y) arrays of shape (ny, nx_block)."""
-    X_low = np.broadcast_to(x, Y_low.shape)
-    X_up = np.broadcast_to(x, Y_up.shape)
-    sl0, sl1 = slice(0, i_lip + 1), slice(i_lip, None)
-    return {
-        0: (X_low[:, sl0].copy(), Y_low[:, sl0].copy()),   # lower, upstream of lip
-        1: (X_low[:, sl1].copy(), Y_low[:, sl1].copy()),   # lower, intake/isolator
-        2: (X_up[:, sl1].copy(), Y_up[:, sl1].copy()),     # upper, above cowl
-        3: (X_up[:, sl0].copy(), Y_up[:, sl0].copy()),     # upper, upstream of lip
-    }
 
 
 
@@ -279,7 +266,7 @@ def main():
         if getattr(args, k) is not None:
             m[k] = getattr(args, k)
     Y_low, Y_up, dmid = build_y(x, y_lower, y_mid, y_top, x[i_lip], m)
-    blocks = assemble_blocks_2d(x, Y_low, Y_up, i_lip)
+    blocks = faceted(x, Y_low, Y_up, i_lip)
     check_y(x, Y_low, Y_up, blocks, geo, i_lip, m)
     print("  2D block shapes (ny, nx):", {b: v[0].shape for b, v in blocks.items()})
     n2d = sum(v[0].size for v in blocks.values())
