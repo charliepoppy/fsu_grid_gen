@@ -266,7 +266,7 @@ def main():
         if getattr(args, k) is not None:
             m[k] = getattr(args, k)
     Y_low, Y_up, dmid = build_y(x, y_lower, y_mid, y_top, x[i_lip], m)
-    blocks = faceted(x, Y_low, Y_up, i_lip)
+    blocks, ifaces, info = faceted(x, Y_low, Y_up, i_lip)
     check_y(x, Y_low, Y_up, blocks, geo, i_lip, m)
     print("  2D block shapes (ny, nx):", {b: v[0].shape for b, v in blocks.items()})
     n2d = sum(v[0].size for v in blocks.values())

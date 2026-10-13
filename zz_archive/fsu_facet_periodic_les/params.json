@@ -1,0 +1,35 @@
+{
+  "mesh": {
+    "casename": "FSU_facet_periodic_LES",
+    "geometry_dir": "geometry",
+    "dx_target": 0.1026,
+    "x_stations": [
+      "leading edge",
+      "cowl lip",
+      "shoulder",
+      "cowl end",
+      "facet end",
+      "outlet floor"
+    ],
+    "y_top": 80.0,
+    "ny_lower": 500,
+    "ny_upper": 150,
+    "dy_wall": 0.006,
+    "dy_interface": 0.1,
+    "blend_length": 20.0,
+    "dy_top": 0.3,
+    "dy_cowl_outer": 0.15,
+    "cowl_outer_blend": 5.0,
+    "Lz": 25.0,
+    "nz": 50,
+    "span": "periodic",
+    "dz_wall": 0.006,
+    "dz_blend_up": 20.0,
+    "dz_blend_down": 5.0,
+    "nhalo": 5,
+    "write_h0": true,
+    "scale_factor": 0.7662878787878789
+  },
+  "geometry_sha": "b8d771afcc389fe9",
+  "geometry_generated": "2026-10-09T16:09:24"
+}

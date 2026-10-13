@@ -20,7 +20,7 @@ def faceted(x, Y_low, Y_up, i_lip):
     return blocks, ifaces, info
 
 
-def notched()
+def notched():
     """6-block faceted topology: split both strips at the cowl lip and facet lip columns."""
     X_low = np.broadcast_to(x, Y_low.shape)
     X_up = np.broadcast_to(x, Y_up.shape)

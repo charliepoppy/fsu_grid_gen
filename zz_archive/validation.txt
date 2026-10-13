@@ -1,0 +1,45 @@
+
+============================================================================================
+GEOMETRY VALIDATION
+============================================================================================
+group      check                                     value     target       diff     tol  ok
+--------------------------------------------------------------------------------------------
+angle      ramp 1 (LE -> turn start)                6.6700     6.6700    +0.0000    0.01  PASS
+angle      turn first segment                       6.6718     6.6700    +0.0018    0.01  PASS
+angle      turn last segment                       20.7982    20.8000    -0.0018    0.01  PASS
+angle      ramp 2 (turn end -> shoulder)           20.8000    20.8000    +0.0000    0.01  PASS
+angle      facet (shoulder -> facet end)            9.0000     9.0000    -0.0000    0.01  PASS
+angle      cowl (lip -> cowl end)                   9.0000     9.0000    +0.0000    0.01  PASS
+angle      isolator floor                           0.0000     0.0000    +0.0000    0.01  PASS
+angle      isolator ceiling                         0.0000     0.0000    +0.0000    0.01  PASS
+MoC        max wave miss distance from focus        0.0000     0.0000    +0.0000   1e-06  PASS
+constraint isolator height H                       17.3400    17.3400    -0.0000    0.05  PASS
+constraint shoulder vs CAD curve end (y)           34.8314    34.8450    -0.0136    0.05  PASS
+CAD        wall vs CAD curve, max |dy|              0.0287     0.0000    +0.0287    0.05  PASS
+CAD        wall vs CAD curve, rms dy                0.0108     0.0000    +0.0108    0.05  PASS
+
+corner                 constructed             digitised       dx       dy     |d|  ok
+--------------------------------------------------------------------------------------------
+curve end     ( 156.175,  34.831)  ( 156.175,  34.831)   +0.000   +0.000   0.001  PASS
+cowl end      ( 181.061,  56.440)  ( 181.060,  56.440)   +0.001   +0.000   0.001  PASS
+facet end     ( 183.126,  39.100)  ( 183.190,  39.050)   -0.064   +0.050   0.081  PASS
+
+derived (information)
+--------------------------------------------------------------------------------------------
+  leading edge             (   0.0000,    0.0992)
+  turn start               (  63.6425,    7.5417)
+  turn end                 ( 114.3373,   18.9386)
+  shoulder                 ( 156.1754,   34.8314)
+  facet end                ( 183.1264,   39.1000)
+  cowl lip                 ( 140.4000,   50.0000)
+  cowl end                 ( 181.0606,   56.4400)
+  outlet floor             ( 273.1264,   39.1000)
+  outlet ceiling           ( 273.1264,   56.4400)
+  cowl shock impingement   ( 175.8510,   37.9477)
+  focus offset from lip      0.4243
+  LE shock   beta 24.486 deg, M2 2.6681
+  turn       M 2.6681 -> 2.0888
+  cowl shock beta 39.577 deg, M3 1.6540
+
+0 FAIL(s)
+============================================================================================
