@@ -94,6 +94,18 @@ def validate(G, cfg, ref, tol, out_path=None):
     add("constraint", "isolator height H", G["ceiling"] - G["floor"], ref["H_t"], tol["H"], "")
     add("constraint", "shoulder vs CAD curve end (y)", P["shoulder"][1], ref["cad_curve_end"][1], tol["cad"], "")
 
+    # --- notch (only if add_notch has run) ---
+    if "lower_notched" in G:
+        add("notch", "step height", P["shoulder"][1] - P["step bottom"][1], cfg["notch_depth"], 1e-9, "")
+        add("notch", "step face vertical (dx)", P["step bottom"][0] - P["shoulder"][0], 0.0, 1e-12, "")
+        add("notch", "notch floor angle", ang(P["step bottom"], P["notch end"]), cfg["notch_angle"], tol["angle"], "deg")
+        add("notch", "notch end on isolator floor", P["notch end"][1], G["floor"], 1e-12, "")
+        # the two walls must be identical upstream of the step and downstream of the notch end
+        ln, lw = G["lower_notched"], G["lower"]
+        xs = lw[:, 0][(lw[:, 0] < P["shoulder"][0]) | (lw[:, 0] >= P["notch end"][0])]
+        add("notch", "walls identical outside notch",
+            np.abs(np.interp(xs, ln[:, 0], ln[:, 1]) - np.interp(xs, lw[:, 0], lw[:, 1])).max(), 0.0, 1e-12, "")
+
     # --- MoC wall vs full-precision CAD curve ---
     cad = None
     if Path(ref["cad_curve_csv"]).exists():
@@ -170,8 +182,9 @@ def export_geometry(G, cfg, validated, out_dir):
     import json, hashlib, datetime
     out_dir = Path(out_dir); out_dir.mkdir(parents=True, exist_ok=True)
  
+    extra = {"lower_notched": G["lower_notched"]} if "lower_notched" in G else {}
     np.savez(out_dir / "walls.npz", lower=G["lower"], upper=G["upper"],
-             W=G["W"], M=G["M"], phi=G["phi"], focus=G["F"])
+             W=G["W"], M=G["M"], phi=G["phi"], focus=G["F"], **extra)
     walls_hash = hashlib.sha256((out_dir / "walls.npz").read_bytes()).hexdigest()[:16]
  
     doc = {
@@ -194,7 +207,6 @@ if __name__ == "__main__":
     fig_dir = HERE / "figs"
     fig_dir.mkdir(exist_ok=True)
  
-    G = solve_geometry(CFG)
     G = add_notch(solve_geometry(CFG), CFG)
     # print(G["lower_notched"].shape)        # expect (4005, 2): LE + 4000 MoC points + S, B, E, outlet
     # print(G["lower_notched"][-5:])         # last 5 rows: shoulder, step bottom, notch end, outlet

@@ -2,16 +2,57 @@ import numpy as np
 # ======================================================================
 # x distribution
 # ======================================================================
-def build_x(stations, dx_target):
-    """Piecewise-uniform x with a node exactly on every station. Returns x, station indices, per-segment dx."""
+def _graded(L, d_fine, dx, gmax):
+    """
+    Cell sizes covering length L: geometric from d_fine (growth gmax) until the next cell
+    would reach dx, then uniform cells (<= dx) for the remainder. Fine end first.
+    """
+    layer = []
+    d = d_fine
+    while d < dx and sum(layer) + d < L:
+        layer.append(d)
+        d *= gmax
+    rem = L - sum(layer)
+    n_u = max(1, int(np.ceil(rem / dx - 1e-9)))
+    return np.r_[layer, np.full(n_u, rem / n_u)]
+
+
+def build_x(stations, dx_target, refine=None, gmax=1.05):
+    """
+    x nodes with a node exactly on every station. Returns x, station indices, per-segment max dx.
+
+    refine : {station index: dx at that station} - segments touching a refined station are
+             graded geometrically (growth <= gmax) from that dx up to dx_target.
+             Segments without a refined end are uniform (exactly as before).
+    """
     xs = np.asarray(stations, float)
     if np.any(np.diff(xs) <= 0):
         raise ValueError(f"stations must be strictly increasing: {xs}")
-    n = np.maximum(1, np.round(np.diff(xs) / dx_target).astype(int))
-    segs = [np.linspace(a, b, k + 1)[:-1] for a, b, k in zip(xs[:-1], xs[1:], n)]
+    refine = refine or {}
+    segs, n, dmax = [], [], []
+    for k, (a, b) in enumerate(zip(xs[:-1], xs[1:])):
+        fa, fb = refine.get(k), refine.get(k + 1)
+        if fa is None and fb is None:                       # uniform segment (unchanged behaviour)
+            nk = max(1, int(round((b - a) / dx_target)))
+            segs.append(np.linspace(a, b, nk + 1)[:-1])
+            dmax.append((b - a) / nk)
+        else:
+            if fa is not None and fb is not None:           # fine at both ends: grade to the middle
+                half = _graded(0.5 * (b - a), min(fa, fb), dx_target, gmax)
+                d = np.r_[half, half[::-1]]
+            elif fa is not None:
+                d = _graded(b - a, fa, dx_target, gmax)
+            else:
+                d = _graded(b - a, fb, dx_target, gmax)[::-1]
+            pts = a + np.r_[0.0, np.cumsum(d)[:-1]]
+            segs.append(pts)
+            nk = d.size
+            dmax.append(d.max())
+        n.append(segs[-1].size)
     x = np.r_[np.concatenate(segs), xs[-1]]
     idx = np.r_[0, np.cumsum(n)]
-    return x, idx, np.diff(xs) / n
+    x[idx] = xs                                             # stations exact (no round-off from cumsum)
+    return x, idx, np.array(dmax)
 
 
 def wall_core(n, L, d0, rmax=1.05):
@@ -129,16 +170,20 @@ def sidewall_weight(x, x_lip, upper, m):
     return np.where(x >= x_lip, w if upper else 1.0, w)
 
 
-def build_z(xb, ib, x_lip, m):
-    """(nz, nx_block) spanwise coordinates for block ib with x-coordinates xb."""
+def build_z(xb, x_lip, m, external=False):
+    """
+    (nz, nx_block) spanwise coordinates for a block with x-coordinates xb.
+    external : True for blocks outside the duct (above the cowl) - the sidewall
+               clustering relaxes back to uniform downstream of the lip.
+    """
     nz, Lz = m["nz"], m["Lz"]
     if m["span"] == "periodic":
         z1 = 0.5 * Lz * np.linspace(-1.0, 1.0, nz, endpoint=False)
         return np.broadcast_to(z1[:, None], (nz, xb.size))
     if m["span"] != "sidewall":
         raise ValueError(f"unknown span type {m['span']!r}")
-    # sidewall: nodes on both z = 0 and z = Lz (walls in B1), same nz in every block
+    # sidewall: nodes on both z = 0 and z = Lz (walls on the internal blocks), same nz in every block
     z_uni = np.linspace(0.0, Lz, nz)
     z_wall, _ = wall_core(nz, Lz, m["dz_wall"], rmax=m["dz_growth"])
-    w = sidewall_weight(xb, x_lip, upper=ib in (2, 3), m=m)
+    w = sidewall_weight(xb, x_lip, upper=external, m=m)
     return z_uni[:, None] * (1.0 - w[None, :]) + z_wall[:, None] * w[None, :]
