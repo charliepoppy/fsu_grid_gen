@@ -7,11 +7,12 @@ from geometry.lines import line
 # ======================================================================
 CONSTRUCT = dict(color="0.6", lw=0.5, zorder=1)
 WALL = dict(color="k", lw=0.7, zorder=3)
-DIGITISED = dict(marker="s", ls="", ms=3, mfc="tab:blue", mec="none", zorder=5)
-KNOWN = dict(marker="o", ls="", ms=3, mfc="tab:orange", mec="none", zorder=5)
-CORNER = dict(marker="o", ls="", ms=2.5, color="k", mec="none", zorder=4)
+NOTCH = dict(color="k", lw=0.7, zorder=3)
+DIGITISED = dict(marker="s", ls="", ms=1, mfc="tab:blue", mec="none", zorder=5)
+KNOWN = dict(marker="o", ls="", ms=1, mfc="tab:orange", mec="none", zorder=5)
+CORNER = dict(marker="o", ls="", ms=1, color="k", mec="none", zorder=4)
 LABEL_OFFSET = {"curve end": (5, -10), "cowl end": (5, 8), "facet end": (5, -10), "cowl lip": (5, 8)}
-
+DPI = 600
 
 
 
@@ -33,7 +34,17 @@ def draw_construction(ax, G, cfg, ref):
     ax.plot([G["x_out"]] * 2, [G["floor"], G["ceiling"]], **CONSTRUCT)
     for name in ("turn start", "turn end", "shoulder", "facet end", "cowl end"):
         ax.plot(*P[name], **CORNER)
-    ax.plot(*G["F"], "+", color="k", ms=5, mew=0.6, zorder=4)
+    ax.plot(*G["F"], "o", color="r", ms=1, mew=0, zorder=4)
+
+
+    # notched variant (only if add_notch has run)
+    if "lower_notched" in G:
+        ln = G["lower_notched"]
+        ax.plot(ln[:, 0], ln[:, 1], **NOTCH, label="notched wall")
+        line(ax, P["step bottom"], cfg["notch_angle"], 200, **CONSTRUCT)   # the 10.6° construction line
+        for name in ("step bottom", "notch end"):
+            ax.plot(*P[name], **CORNER)
+
 
     # shocks
     LS, CS = G["LE_shock"], G["cowl_shock"]
@@ -62,6 +73,16 @@ def draw_construction(ax, G, cfg, ref):
             va="center", ha="left", fontsize=8, color="0.3")
 
 
+    # ramp angles
+    ax.text(0.35 * (P["turn start"][0] + P["turn end"][0]), 0.18 * (P["turn start"][1]),
+            rf"$\theta_0$ = {cfg['theta0']:.2f}°", fontsize=8, color="0.3", rotation=0,
+            va="bottom", ha="center")
+
+    ax.text(0.5 * (P["turn end"][0] + P["shoulder"][0]), 0.25 * (P["turn end"][1] + P["shoulder"][1]),
+            rf"$\theta_1$ = {cfg['theta1']:.2f}°", fontsize=8, color="0.3", rotation=cfg["theta1"],
+            va="bottom", ha="center")
+
+
 
 def plot_MoC(G, cfg, ref, fig_dir):
     fig, ax = plt.subplots(figsize=(10, 4))
@@ -71,7 +92,7 @@ def plot_MoC(G, cfg, ref, fig_dir):
     ax.set_xlabel(r"$x$"); ax.set_ylabel(r"$y$")
     ax.set_title(rf"Intake construction, $M_\infty$ = {cfg['Minf']}")
     ax.legend(loc="upper left", fontsize=7)
-    fig.savefig(fig_dir / "MoC.png")
+    fig.savefig(fig_dir / "MoC.png", dpi=DPI)
     plt.close(fig)
 
 
@@ -94,7 +115,7 @@ def plot_overlay_zooms(img, extent, G, cfg, ref, fig_dir):
     for ax in axes[1:]:
         x0, x1 = ax.get_xlim(); y0, y1 = ax.get_ylim()
         axes[0].add_patch(plt.Rectangle((x0, y0), x1 - x0, y1 - y0, fill=False, ec="tab:blue", lw=0.8, zorder=6))
-    fig.savefig(fig_dir / "overlay_zoom.png")
+    fig.savefig(fig_dir / "overlay_zoom.png", dpi=DPI)
     plt.close(fig)
 
 
@@ -110,5 +131,5 @@ def plot_cad_residual(G, fig_dir):
         ax.text(G["pts"][name][0], ax.get_ylim()[1], f" {name}", fontsize=7, va="top", color="tab:blue")
     ax.set_xlabel(r"$x$"); ax.set_ylabel(r"$y_{CAD} - y_{MoC}$")
     ax.set_title("Lower wall: CAD minus construction")
-    fig.savefig(fig_dir / "validation_cad_residual.png", bbox_inches="tight")
+    fig.savefig(fig_dir / "validation_cad_residual.png", dpi=DPI,    bbox_inches="tight")
     plt.close(fig)

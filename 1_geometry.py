@@ -17,6 +17,7 @@ import matplotlib.image as mpimg
 import numpy as np
 from scipy.optimize import brentq, minimize_scalar
 from geometry.gasdynamics import pm_nu, pm_M, oblique_shock
+from geometry.add_notch import add_notch
 from geometry.geometry import  solve_geometry
 from geometry.lines import intersect, ang
 from geometry.plots import plot_cad_residual, plot_MoC, plot_overlay_zooms, draw_construction
@@ -43,6 +44,9 @@ CFG = {
     # "floor": 39.12,                    # measured from sketch, +-0.1
     "floor": 39.10,                    # measured from sketch, +-0.1
     "iso_length": 90.0,                # measured from facet end (ASSUMPTION - check FSU paper)
+
+    "notch_depth": 1.0,       # vertical step at the shoulder [mm]
+    "notch_angle": 10.6,      # notched floor angle [deg], from step bottom to the isolator floor
 }
 
 # References the construction is validated against
@@ -191,12 +195,15 @@ if __name__ == "__main__":
     fig_dir.mkdir(exist_ok=True)
  
     G = solve_geometry(CFG)
+    G = add_notch(solve_geometry(CFG), CFG)
+    # print(G["lower_notched"].shape)        # expect (4005, 2): LE + 4000 MoC points + S, B, E, outlet
+    # print(G["lower_notched"][-5:])         # last 5 rows: shoulder, step bottom, notch end, outlet
     ok = validate(G, CFG, REF, TOL, out_path=fig_dir / "validation.txt")
     export_geometry(G, CFG, ok, HERE / "geometry")
     plot_cad_residual(G, fig_dir)
     plot_MoC(G, CFG, REF, fig_dir)
  
-    img_path = HERE / "utils" / "Inventor.png"
+    img_path = HERE / "data" / "Inventor.png"
     if img_path.exists():
         img = mpimg.imread(img_path)
         # pixel centres; physical points include the +0.492/+0.054 offset fitted to the CAD ramp
